@@ -317,7 +317,7 @@ router.post("/payment/order/query", async (req, res) => {
 });
 
 // ─── 3. Collection Result Notification / Callback ────────────────────────────
-router.get("/payment/callback", async (req, res) => {
+router.post("/payment/callback", async (req, res) => {
   try {
     const {
       payOrderId,
