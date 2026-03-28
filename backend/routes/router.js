@@ -219,7 +219,7 @@ router.post("/payment/order/create", verifyToken, async (req, res) => {
       mchId: String(mchId).trim(),
       productId: String(productId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
-      amount: Number(amount),
+      amount:100*100,
       clientIp: String(clientIp).trim(),
       notifyUrl: String(notifyUrl).trim(),
       // Store userId in param1 so callback can credit the user

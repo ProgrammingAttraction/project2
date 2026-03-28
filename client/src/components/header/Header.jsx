@@ -195,7 +195,7 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
             mchOrderNo,
             amount:     amountCents,
             clientIp:   '0.0.0.0',
-            notifyUrl:  `https://dgpaybd.com/api/payment/callback`,
+            notifyUrl:  `https://api.dgpaybd.com/api/payment/callback`,
             returnUrl:  `http://localhost:5173/deposit/result?order=${mchOrderNo}`,
             subject:    'Deposit',
             body:       `${selectedMethod.label} deposit`,
