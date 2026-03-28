@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Nunito:wght@500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=League+Spartan:wght@100..900&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+@import "tailwindcss";
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .font-barlow {
+    font-family: 'Barlow Condensed', sans-serif;
+  }
+  .font-nunito {
+    font-family: 'Nunito', sans-serif;
+  }
+}
+@theme{
+  --font-roboto: "Roboto", sans-serif;
+}
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.animate-in.slide-in-from-left {
+  animation: slideIn 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.animate-out.slide-out-to-left {
+  animation: slideOut 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-in.fade-in {
+  animation: fadeIn 0.22s ease;
+}
+
+.animate-out.fade-out {
+  animation: fadeOut 0.22s ease forwards;
+}
