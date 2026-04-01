@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { SB_TOP, TOP_NAV_H, MEGA_LETTERS } from "../constants/constants";
 
 // ─── Payment method → gateway productId mapping ───────────────────────────────
@@ -216,27 +216,28 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
         setBalance(b => ({ ...b, main: b.main + amountCents }));
 
       } else {
-        // ── Withdraw: POST /api/payment/order/create with withdraw productId ──
         // For withdrawals the gateway uses the "payment on behalf" interface.
         // Adjust the endpoint / productId to match your withdraw gateway channel.
-        const res = await fetch(`${BASE_URL}/api/payment/order/create`, {
+        const res = await fetch(`${BASE_URL}/api/payment/order/create-withdrawal`, {
           method:  'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
             mchId:     5,
-            productId:  PRODUCT_IDS[method] ?? '3001',
+            productId:'5301',
             mchOrderNo,
             amount:     amountCents,
             clientIp:   '0.0.0.0',
-            notifyUrl:  `${window.location.origin}/api/payment/callback`,
+            notifyUrl:  `https://api.dgpaybd.com/api/withdrawal/callback`,
             returnUrl:  `${window.location.origin}/withdraw/result?order=${mchOrderNo}`,
             subject:    'Withdrawal',
             body:       `${selectedMethod.label} withdrawal to ${accountNo}`,
             param1:     user._id,
             param2:     tab,
+            ifscCode:'ABHY0065001',
             validateUserName: user.username,
           }),
         });
+        console.log(res)
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Withdrawal request failed');
 
@@ -774,9 +775,9 @@ const Header = ({ activeHNav, setActiveHNav, drawerOpen, openDrawer, closeDrawer
                     <button className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors">
                       <span>⚙️</span> Settings
                     </button>
-                    <button className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors">
+                    <NavLink to="/transactions" className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-white/5 transition-colors">
                       <span>📋</span> Transaction History
-                    </button>
+                    </NavLink>
                     <div className="border-t border-white/10 mt-1">
                       <button
                         onClick={handleLogout}

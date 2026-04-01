@@ -1,5 +1,29 @@
 const mongoose = require('mongoose');
 
+// Deposit history sub-schema
+const depositHistorySchema = new mongoose.Schema({
+    amount: {
+        type: Number,
+        required: true
+    },
+    orderId: {
+        type: String,
+        required: true
+    },
+    utr: {
+        type: String
+    },
+    date: {
+        type: Date,
+        default: Date.now
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'completed', 'failed'],
+        default: 'completed'
+    }
+});
+
 const userSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -21,7 +45,46 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Password is required'],
         minlength: [6, 'Password must be at least 6 characters long']
-    }
+    },
+    balance: {
+        type: Number,
+        default: 0,
+        min: [0, 'Balance cannot be negative']
+    },
+    depositHistory: [depositHistorySchema],
+    withdrawHistory: [{
+        amount: {
+            type: Number,
+            required: true
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'completed', 'failed', 'cancelled'],
+            default: 'pending'
+        },
+        withdrawalMethod: {
+            type: String,
+            enum: ['bank', 'upi', 'crypto'],
+            required: true
+        },
+        accountDetails: {
+            type: mongoose.Schema.Types.Mixed,
+            required: true
+        },
+        transactionId: {
+            type: String
+        },
+        requestedAt: {
+            type: Date,
+            default: Date.now
+        },
+        processedAt: {
+            type: Date
+        },
+        remarks: {
+            type: String
+        }
+    }]
 }, {
     timestamps: true // Adds createdAt and updatedAt timestamps
 });

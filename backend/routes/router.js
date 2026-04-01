@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
-const Deposit = require("../models/Deposit"); // ← NEW
+const Deposit = require("../models/Deposit");
+const Withdrawal = require("../models/Withdrawal"); // ← NEW Withdrawal model
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
@@ -108,7 +109,7 @@ router.post("/users/register", async (req, res) => {
     }
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const user = await User.create({ username, email, password: hashedPassword });
+    const user = await User.create({ username, email, password: hashedPassword, balance: 0 });
     const token = jwt.sign({ userId: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
     user.password = undefined;
     res.status(201).json({ success: true, message: "User created successfully", data: user, token });
@@ -173,8 +174,11 @@ router.get("/me", verifyToken, async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+//  DEPOSIT ROUTES (Collection)
+// ════════════════════════════════════════════════════════════════════════════
 
-// ─── 1. Create Payment Order ──────────────────────────────────────────────────
+// ─── 1. Create Payment Order (Deposit) ────────────────────────────────────────
 router.post("/payment/order/create", verifyToken, async (req, res) => {
   try {
     const {
@@ -202,7 +206,7 @@ router.post("/payment/order/create", verifyToken, async (req, res) => {
 
     // ── Save deposit as PENDING in DB before calling gateway ──────────────
     const deposit = await Deposit.create({
-      userId: req.userId,        // from JWT token
+      userId: req.userId,
       mchId: String(mchId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
       productId: String(productId).trim(),
@@ -219,10 +223,9 @@ router.post("/payment/order/create", verifyToken, async (req, res) => {
       mchId: String(mchId).trim(),
       productId: String(productId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
-      amount:100*100,
+      amount: Number(amount),
       clientIp: String(clientIp).trim(),
       notifyUrl: String(notifyUrl).trim(),
-      // Store userId in param1 so callback can credit the user
       param1: String(req.userId),
     };
 
@@ -301,7 +304,6 @@ router.post("/payment/order/query", async (req, res) => {
 
     console.log(`📥 [order/query] gateway HTTP ${status} →`, data);
 
-    // Also return our local deposit record
     const localDeposit = await Deposit.findOne({ mchOrderNo });
 
     res.status(200).json({
@@ -319,15 +321,103 @@ router.post("/payment/order/query", async (req, res) => {
 // ─── 3. Collection Result Notification / Callback ────────────────────────────
 router.post("/payment/callback", async (req, res) => {
   try {
-     console.log("callback response :",req.body)
+    console.log("📥 Callback received:", req.body);
+    
+    const callbackData = req.body;
+    
+    const {
+      mchOrderNo,
+      mchId,
+      payOrderId,
+      amount,
+      realAmount,
+      income,
+      status,
+      paySuccessTime,
+      utr,
+      param1,
+      param2,
+      sign
+    } = callbackData;
+    
+    if (!mchOrderNo || !mchId || !payOrderId) {
+      console.error("❌ Missing required fields in callback");
+      return res.status(200).send("success");
+    }
+    
+    const payloadForSign = { ...callbackData };
+    delete payloadForSign.sign;
+    
+    const calculatedSign = generateSign(payloadForSign, PAYMENT_SECRET_KEY);
+    
+    if (calculatedSign !== sign) {
+      console.error("❌ Invalid signature in callback");
+      return res.status(200).send("success");
+    }
+    
+    console.log("✅ Signature verified successfully");
+    
+    const deposit = await Deposit.findOne({ mchOrderNo });
+    
+    if (!deposit) {
+      console.error(`❌ Deposit not found for order: ${mchOrderNo}`);
+      return res.status(200).send("success");
+    }
+    
+    if (deposit.status === "completed") {
+      console.log(`⚠️ Deposit ${mchOrderNo} already completed, skipping`);
+      return res.status(200).send("success");
+    }
+    
+    if (status === 1) {
+      deposit.status = "completed";
+      deposit.realAmount = realAmount || amount;
+      deposit.income = income;
+      deposit.utr = utr;
+      deposit.payOrderId = payOrderId;
+      deposit.paySuccessTime = paySuccessTime;
+      deposit.completedAt = new Date();
+      await deposit.save();
+      
+      console.log(`✅ Deposit ${mchOrderNo} marked as completed`);
+      
+      const userId = param1 || deposit.userId;
+      const user = await User.findById(userId);
+      if (user) {
+        if (user.balance === undefined) user.balance = 0;
+        const amountToAdd = (realAmount || amount) / 100;
+        user.balance = (user.balance || 0) + amountToAdd;
+        
+        if (!user.depositHistory) user.depositHistory = [];
+        user.depositHistory.push({
+          amount: amountToAdd,
+          orderId: payOrderId,
+          utr: utr,
+          date: new Date(),
+          status: "completed"
+        });
+        
+        await user.save();
+        console.log(`💰 Added ${amountToAdd} to user ${userId}'s balance. New balance: ${user.balance}`);
+      } else {
+        console.error(`❌ User not found: ${userId}`);
+      }
+    } else {
+      deposit.status = status === 2 ? "failed" : "timeout";
+      deposit.completedAt = new Date();
+      await deposit.save();
+      console.log(`⚠️ Deposit ${mchOrderNo} marked as ${deposit.status}`);
+    }
+    
+    res.status(200).send("success");
+    
   } catch (error) {
     console.error("❌ [callback] exception:", error.message);
-    // Always return success even on error to prevent infinite retries
     return res.status(200).send("success");
   }
 });
 
-// ─── 4. Get Deposit Status (for frontend polling after redirect) ──────────────
+// ─── 4. Get Deposit Status ────────────────────────────────────────────────────
 router.get("/payment/deposit/status", verifyToken, async (req, res) => {
   try {
     const { mchOrderNo } = req.query;
@@ -338,7 +428,7 @@ router.get("/payment/deposit/status", verifyToken, async (req, res) => {
 
     const deposit = await Deposit.findOne({
       mchOrderNo,
-      userId: req.userId, // Security: only owner can check
+      userId: req.userId,
     });
 
     if (!deposit) {
@@ -349,7 +439,7 @@ router.get("/payment/deposit/status", verifyToken, async (req, res) => {
       success: true,
       data: {
         mchOrderNo: deposit.mchOrderNo,
-        status: deposit.status,         // "pending" | "completed" | "timeout" | "failed"
+        status: deposit.status,
         amount: deposit.amount,
         realAmount: deposit.realAmount,
         income: deposit.income,
@@ -376,5 +466,439 @@ router.get("/payment/deposits", verifyToken, async (req, res) => {
     res.status(500).json({ success: false, message: "Error fetching deposits", error: error.message });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+//  WITHDRAWAL ROUTES (Payment on Behalf / Payout)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ─── 1. Create Withdrawal Order (Payment on Behalf) ───────────────────────────
+router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) => {
+  try {
+    const {
+      mchId,
+      productId,
+      mchOrderNo,
+      amount,
+      clientIp,
+      notifyUrl,
+      userName,
+      cardNumber,
+      ifscCode,
+      bankName,
+      accountType, // New parameter: 'bank' (default) or 'UPI'
+      param1,
+      param2,
+    } = req.body;
+  console.log("",req.body)
+    // Validate required fields
+    if (!mchId || !productId || !mchOrderNo || !amount || !clientIp || !notifyUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: mchId, productId, mchOrderNo, amount, clientIp, notifyUrl",
+      });
+    }
+
+
+    // Validate IFSC code for bank payments (skip for UPI)
+    const paymentType = accountType || 'bank'; // Default to 'bank'
+    if (paymentType === 'bank') {
+      if (!ifscCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required bank details: ifscCode",
+        });
+      }
+      
+      // Validate IFSC code format: 11 alphanumeric characters, 5th character must be 0
+      const ifscRegex = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
+      if (!ifscRegex.test(ifscCode)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid IFSC code format. Must be 11 alphanumeric characters with 5th character as 0",
+        });
+      }
+    }
+
+    // Check user's balance
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const withdrawalAmount = Number(amount) / 100; // Convert from paise/cents
+    if (user.balance < withdrawalAmount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance",
+        balance: user.balance,
+        requested: withdrawalAmount,
+      });
+    }
+
+    // Create withdrawal record as PENDING
+    const withdrawal = await Withdrawal.create({
+      userId: req.userId,
+      mchId: String(mchId).trim(),
+      mchOrderNo: String(mchOrderNo).trim(),
+      productId: String(productId).trim(),
+      amount: withdrawalAmount,
+      clientIp: String(clientIp).trim(),
+      notifyUrl: String(notifyUrl).trim(),
+      ifscCode: paymentType === 'bank' ? String(ifscCode).trim() : null,
+      bankName: bankName ? String(bankName).trim() : "",
+      accountType: paymentType,
+      status: "pending",
+      param1: param1 ? String(param1).trim() : null,
+      param2: param2 ? String(param2).trim() : null,
+    });
+
+    console.log("💾 Withdrawal saved as pending:", withdrawal._id);
+
+    // Build payload for gateway based on documentation
+    const payload = {
+      mchId: String(mchId).trim(),
+      productId: String(productId).trim(),
+      mchOrderNo: String(mchOrderNo).trim(),
+      amount: Number(amount) *100, // Keep original amount (paise/cents)
+      clientIp: String(clientIp).trim(),
+      notifyUrl: String(notifyUrl).trim(),
+      userName: String(userName).trim(),
+      cardNumber: String(cardNumber).trim(),
+      bankName: String(bankName).trim(),
+    };
+
+    // Add accountType if provided
+    if (paymentType) {
+      payload.accountType = paymentType;
+    }
+
+    // Add IFSC code only for bank payments
+    if (paymentType === 'bank' && ifscCode) {
+      payload.ifscCode = String(ifscCode).trim();
+    }
+
+    // Add extended parameters as per documentation
+    if (param1) payload.param1 = String(param1).trim();
+    if (param2) payload.param2 = String(param2).trim();
+
+    // Add user tracking
+    payload.memberIPAddress = clientIp; // Add client IP as memberIPAddress
+    payload.userId = String(req.userId); // Track internal user ID
+
+    // Generate signature - include all parameters except sign itself
+    const signPayload = { ...payload };
+    delete signPayload.sign; // Remove sign if it exists
+    payload.sign = generateSign(signPayload, PAYMENT_SECRET_KEY);
+
+    console.log("📤 Withdrawal payload:", JSON.stringify(payload, null, 2));
+
+    // Call gateway
+    const response = await axios.post(
+      `${GATEWAY_BASE_URL}/v1.0/api/order/create`,
+      payload,
+      { headers: { "Content-Type": "application/json" }, timeout: 30000 }
+    );
+
+    console.log("📥 Gateway withdrawal response:", response.data);
+
+    // Update withdrawal with gateway response
+    if (response.data) {
+      await Withdrawal.findByIdAndUpdate(withdrawal._id, {
+        gatewayResponse: response.data,
+        payOrderId: response.data?.data?.payOrderId,
+        gatewayStatus: response.data?.code,
+      });
+    }
+
+    // Check if withdrawal was successful immediately
+    if (response.data?.code === 200 || response.data?.status === "success") {
+      // Deduct balance immediately for successful withdrawal
+      user.balance = user.balance - withdrawalAmount;
+      
+      if (!user.withdrawalHistory) user.withdrawalHistory = [];
+      user.withdrawalHistory.push({
+        amount: withdrawalAmount,
+        orderId: response.data?.data?.payOrderId || mchOrderNo,
+        bankAccount: cardNumber,
+        ifscCode: paymentType === 'bank' ? ifscCode : null,
+        upiId: paymentType === 'UPI' ? cardNumber : null,
+        date: new Date(),
+        status: "processing"
+      });
+      
+      await user.save();
+      
+      await Withdrawal.findByIdAndUpdate(withdrawal._id, {
+        status: "processing",
+      });
+      
+      console.log(`💰 Deducted ${withdrawalAmount} from user ${req.userId}'s balance. New balance: ${user.balance}`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Withdrawal order created successfully",
+      data: response.data,
+      withdrawalId: withdrawal._id,
+    });
+
+  } catch (error) {
+    console.error("❌ Error creating withdrawal:", error.response?.data || error.message);
+    
+    // If there was an error, mark the withdrawal as failed
+    if (error.response?.data) {
+      try {
+        await Withdrawal.findOneAndUpdate(
+          { mchOrderNo: req.body.mchOrderNo },
+          { 
+            status: "failed",
+            gatewayResponse: error.response.data,
+            errorMessage: error.response.data.message || error.message
+          }
+        );
+      } catch (updateError) {
+        console.error("Failed to update withdrawal status:", updateError);
+      }
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: "Error creating withdrawal order",
+      error: error.response?.data || error.message,
+    });
+  }
+});
+
+// ─── 2. Query Withdrawal Order ────────────────────────────────────────────────
+router.post("/withdrawal/query", verifyToken, async (req, res) => {
+  try {
+    const { mchId, mchOrderNo } = req.body;
+
+    if (!mchId || !mchOrderNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: mchId, mchOrderNo",
+      });
+    }
+
+    const payload = { 
+      mchId: String(mchId).trim(), 
+      mchOrderNo: String(mchOrderNo).trim() 
+    };
+    payload.sign = generateSign(payload, PAYMENT_SECRET_KEY);
+
+    console.log("📤 [withdrawal/query] payload →", JSON.stringify(payload, null, 2));
+
+    const { ok, data, status, error: netErr } = await safePost("/v1.0/api/pay/query", payload);
+
+    if (!ok) {
+      console.error("❌ [withdrawal/query] network error:", netErr);
+      return res.status(502).json({
+        success: false,
+        message: "Could not reach payment gateway",
+        error: netErr,
+      });
+    }
+
+    console.log(`📥 [withdrawal/query] gateway HTTP ${status} →`, data);
+
+    const localWithdrawal = await Withdrawal.findOne({ mchOrderNo });
+
+    // Update local status if gateway shows completed
+    if (data?.data?.status === 1 && localWithdrawal && localWithdrawal.status !== "completed") {
+      localWithdrawal.status = "completed";
+      localWithdrawal.completedAt = new Date();
+      localWithdrawal.gatewayResponse = data;
+      await localWithdrawal.save();
+    } else if (data?.data?.status === 5 && localWithdrawal && localWithdrawal.status !== "failed") {
+      localWithdrawal.status = "failed";
+      localWithdrawal.completedAt = new Date();
+      localWithdrawal.rejectReason = data?.data?.rejectReason;
+      localWithdrawal.gatewayResponse = data;
+      await localWithdrawal.save();
+      
+      // Refund balance if withdrawal failed
+      if (localWithdrawal.status === "failed") {
+        const user = await User.findById(localWithdrawal.userId);
+        if (user) {
+          const refundAmount = localWithdrawal.amount / 100;
+          user.balance = (user.balance || 0) + refundAmount;
+          await user.save();
+          console.log(`💰 Refunded ${refundAmount} to user ${localWithdrawal.userId} for failed withdrawal`);
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Withdrawal query successful",
+      data,
+      localWithdrawal: localWithdrawal || null,
+    });
+  } catch (error) {
+    console.error("❌ [withdrawal/query] exception:", error);
+    res.status(500).json({ success: false, message: "Error querying withdrawal order", error: error.message });
+  }
+});
+
+// ─── 3. Withdrawal Result Notification / Callback (GET based on docs) ─────────
+router.post("/withdrawal/callback", async (req, res) => {
+  try {
+    console.log("📥 Withdrawal callback received (post):", req.body);
+   
+  } catch (error) {
+    console.error("❌ [withdrawal/callback] exception:", error.message);
+    return res.status(200).send("SUCCESS");
+  }
+});
+
+// ─── 4. Get Withdrawal Status ─────────────────────────────────────────────────
+router.get("/withdrawal/status", verifyToken, async (req, res) => {
+  try {
+    const { mchOrderNo } = req.query;
+
+    if (!mchOrderNo) {
+      return res.status(400).json({ success: false, message: "mchOrderNo is required" });
+    }
+
+    const withdrawal = await Withdrawal.findOne({
+      mchOrderNo,
+      userId: req.userId,
+    });
+
+    if (!withdrawal) {
+      return res.status(404).json({ success: false, message: "Withdrawal not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        mchOrderNo: withdrawal.mchOrderNo,
+        status: withdrawal.status,
+        amount: withdrawal.amount,
+        realAmount: withdrawal.realAmount,
+        utr: withdrawal.utr,
+        rejectReason: withdrawal.rejectReason,
+        paySuccessTime: withdrawal.paySuccessTime,
+        createdAt: withdrawal.createdAt,
+        completedAt: withdrawal.completedAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching withdrawal status", error: error.message });
+  }
+});
+
+// ─── 5. Withdrawal History ────────────────────────────────────────────────────
+router.get("/withdrawal/history", verifyToken, async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select("-__v");
+
+    res.status(200).json({ success: true, count: withdrawals.length, data: withdrawals });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching withdrawals", error: error.message });
+  }
+});
+
+// ─── 6. Get User Balance ──────────────────────────────────────────────────────
+router.get("/balance", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("balance");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        balance: user.balance || 0,
+        currency: "INR",
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching balance", error: error.message });
+  }
+});
+
+
+// ─── 9. Get All User Transactions (Combined) ───────────────────────────────────
+router.get("/transactions/all", verifyToken, async (req, res) => {
+  try {
+    // Fetch deposits
+    const deposits = await Deposit.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .limit(100);
+    
+    // Fetch user with withdrawal history
+    const user = await User.findById(req.userId).select("withdrawHistory");
+    
+    // Format deposits
+    const formattedDeposits = deposits.map(deposit => ({
+      id: deposit._id,
+      type: "deposit",
+      amount: deposit.realAmount ? deposit.realAmount / 100 : deposit.amount / 100,
+      status: deposit.status,
+      date: deposit.createdAt,
+      orderId: deposit.mchOrderNo,
+      utr: deposit.utr,
+      details: {
+        productId: deposit.productId,
+        payOrderId: deposit.payOrderId
+      }
+    }));
+    
+    // Format withdrawals
+    const formattedWithdrawals = user.withdrawHistory.map(withdraw => ({
+      id: withdraw._id,
+      type: "withdraw",
+      amount: withdraw.amount,
+      status: withdraw.status,
+      date: withdraw.requestedAt,
+      orderId: withdraw._id,
+      utr: withdraw.transactionId,
+      details: {
+        method: withdraw.withdrawalMethod,
+        accountDetails: withdraw.accountDetails,
+        remarks: withdraw.remarks
+      }
+    }));
+    
+    // Combine and sort
+    const allTransactions = [...formattedDeposits, ...formattedWithdrawals]
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Calculate stats
+    const stats = {
+      totalDeposits: formattedDeposits
+        .filter(t => t.status === "completed")
+        .reduce((sum, t) => sum + t.amount, 0),
+      totalWithdrawals: formattedWithdrawals
+        .filter(t => t.status === "completed")
+        .reduce((sum, t) => sum + t.amount, 0),
+      pendingWithdrawals: formattedWithdrawals
+        .filter(t => t.status === "pending")
+        .reduce((sum, t) => sum + t.amount, 0)
+    };
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        transactions: allTransactions,
+        stats,
+        balance: user?.balance || 0
+      }
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching transactions",
+      error: error.message
+    });
+  }
+});
+
 
 module.exports = router;

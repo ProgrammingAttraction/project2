@@ -1,66 +1,78 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const depositSchema = new mongoose.Schema(
-  {
+const depositSchema = new mongoose.Schema({
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+        index: true
     },
     mchId: {
-      type: String,
-      required: true,
+        type: String,
+        required: true
     },
     mchOrderNo: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    payOrderId: {
-      type: String, // Platform order ID (from gateway callback)
-      default: null,
+        type: String,
+        required: true,
+        unique: true,
+        index: true
     },
     productId: {
-      type: String,
-      required: true,
+        type: String,
+        required: true
     },
     amount: {
-      type: Number, // in cents
-      required: true,
+        type: Number,
+        required: true
     },
     realAmount: {
-      type: Number, // actual paid amount in cents (may differ)
-      default: null,
+        type: Number,
+        default: null
     },
     income: {
-      type: Number, // after fee deduction
-      default: null,
+        type: Number,
+        default: null
     },
     utr: {
-      type: String, // UTR reference from gateway
-      default: null,
+        type: String,
+        default: null
     },
-    status: {
-      type: String,
-      enum: ["pending", "completed", "timeout", "failed"],
-      default: "pending",
+    payOrderId: {
+        type: String,
+        default: null
     },
     paySuccessTime: {
-      type: Date,
-      default: null,
+        type: Number,
+        default: null
     },
-    paymentUrl: {
-      type: String, // redirect URL returned by gateway
-      default: null,
+    status: {
+        type: String,
+        enum: ['pending', 'completed', 'failed', 'timeout'],
+        default: 'pending',
+        index: true
     },
     notifyUrl: {
-      type: String,
+        type: String,
+        required: true
     },
     returnUrl: {
-      type: String,
+        type: String,
+        default: null
     },
-  },
-  { timestamps: true }
-);
+    paymentUrl: {
+        type: String,
+        default: null
+    },
+    completedAt: {
+        type: Date,
+        default: null
+    }
+}, {
+    timestamps: true
+});
 
-module.exports = mongoose.model("Deposit", depositSchema);
+// Compound index for faster queries
+depositSchema.index({ userId: 1, status: 1 });
+depositSchema.index({ mchOrderNo: 1, userId: 1 });
+
+module.exports = mongoose.model('Deposit', depositSchema);
