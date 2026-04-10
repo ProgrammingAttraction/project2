@@ -566,13 +566,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       cardNumber: String(cardNumber).trim(),
       bankName: String(bankName).trim(),
       ifscCode:ifscCode,
-      accountType:accountType
     };
-
-    // Add accountType if provided
-    if (paymentType) {
-      payload.accountType = paymentType;
-    }
 
     // Add IFSC code only for bank payments
     if (paymentType === 'bank' && ifscCode) {
