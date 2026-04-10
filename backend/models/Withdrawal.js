@@ -53,7 +53,6 @@ const WithdrawalSchema = new mongoose.Schema(
     },
     ifscCode: {
       type: String,
-      required: true,
     },
     bankName: {
       type: String,

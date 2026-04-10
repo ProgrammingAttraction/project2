@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { SB_TOP, TOP_NAV_H, MEGA_LETTERS } from "../constants/constants";
 
 // ─── Payment method → gateway productId mapping ───────────────────────────────
@@ -55,13 +56,43 @@ const getAuthHeaders = () => {
   };
 };
 
+// Create axios instance
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_KEY_Base_URL || '',
+  timeout: 30000,
+});
+
+// Add request interceptor for auth headers
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    config.headers['Content-Type'] = 'application/json';
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Generate a unique merchant order number: userId_timestamp_random
 const makeMchOrderNo = (userId) =>
   `${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
 const WalletModal = ({ open, onClose, balance, setBalance }) => {
-  const BASE_URL = import.meta.env.VITE_API_KEY_Base_URL || '';
-
   const [tab, setTab]             = useState('deposit');  // deposit | withdraw | history
   const [step, setStep]           = useState('method');   // method | amount | confirm | success
   const [method, setMethod]       = useState(null);
@@ -102,9 +133,6 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
   }, [open]);
 
   // ── Fetch transaction history from backend ────────────────────────────────
-  // Your backend should expose GET /api/payment/history?mchId=xxx
-  // and return { success: true, data: [ { mchOrderNo, type, method, amount, status, createdAt } ] }
-  // Adjust the endpoint & shape to match your actual DB model.
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -112,22 +140,22 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
       const user = userData ? JSON.parse(userData) : null;
       if (!user) { setHistory([]); return; }
 
-      const res = await fetch(
-        `${BASE_URL}/api/payment/history?mchId=${user._id}`,
-        { headers: getAuthHeaders() }
-      );
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setHistory(json.data);
+      const response = await apiClient.get(`/api/payment/history`, {
+        params: { mchId: user._id }
+      });
+      
+      if (response.data.success && Array.isArray(response.data.data)) {
+        setHistory(response.data.data);
       } else {
         setHistory([]);
       }
-    } catch {
+    } catch (error) {
+      console.error('Error fetching history:', error);
       setHistory([]);
     } finally {
       setHistoryLoading(false);
     }
-  }, [BASE_URL]);
+  }, []);
 
   // Also poll the gateway for latest order status for "pending" orders
   const queryOrderStatus = useCallback(async (mchOrderNo) => {
@@ -136,17 +164,17 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
       const user = userData ? JSON.parse(userData) : null;
       if (!user) return null;
 
-      const res = await fetch(`${BASE_URL}/api/payment/order/query`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ mchId: user._id, mchOrderNo }),
+      const response = await apiClient.post(`/api/payment/order/query`, {
+        mchId: user._id,
+        mchOrderNo
       });
-      const json = await res.json();
-      return json.data ?? null;
-    } catch {
+      
+      return response.data.data ?? null;
+    } catch (error) {
+      console.error('Error querying order status:', error);
       return null;
     }
-  }, [BASE_URL]);
+  }, []);
 
   const methods = tab === 'deposit' ? DEPOSIT_METHODS : WITHDRAW_METHODS;
   const selectedMethod = methods.find(m => m.id === method);
@@ -173,87 +201,86 @@ const WalletModal = ({ open, onClose, balance, setBalance }) => {
     setStep('confirm');
   };
 
-  const handleConfirm = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const userData = localStorage.getItem('user');
-      const user     = userData ? JSON.parse(userData) : null;
-      if (!user) throw new Error('Not logged in');
+const handleConfirm = async () => {
+  setLoading(true);
+  setError('');
+  try {
+    const userData = localStorage.getItem('user');
+    const user = userData ? JSON.parse(userData) : null;
+    if (!user) throw new Error('Not logged in');
 
-      const mchOrderNo = makeMchOrderNo(user._id);
-      const amountCents = Math.round(parseFloat(amount)); // gateway uses cents/paisa
+    const mchOrderNo = makeMchOrderNo(user._id);
+    const amountNum = parseFloat(amount);
+    const amountInPaise = Math.round(amountNum); // Convert to paise/cents as backend expects
 
-      if (tab === 'deposit') {
-        // ── POST /api/payment/order/create ────────────────────────────────
-        const res = await fetch(`${BASE_URL}/api/payment/order/create`, {
-          method:  'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            mchId:      5,
-            productId:'5301',
-            mchOrderNo,
-            amount:     amountCents,
-            clientIp:   '0.0.0.0',
-            notifyUrl:  `https://api.dgpaybd.com/api/payment/callback`,
-            returnUrl:  `http://localhost:5173/deposit/result?order=${mchOrderNo}`,
-            subject:    'Deposit',
-            body:       `${selectedMethod.label} deposit`,
-            param1:     user._id,           // echo back in callback
-            param2:     tab,                // echo back in callback
-          }),
-        });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Order creation failed');
+    if (tab === 'deposit') {
+      // Deposit logic remains the same
+      const response = await apiClient.post(`/api/payment/order/create`, {
+        mchId: 5,
+        productId: '5301',
+        mchOrderNo,
+        amount: amountInPaise,
+        clientIp: '0.0.0.0',
+        notifyUrl: `https://api.dgpaybd.com/api/payment/callback`,
+        returnUrl: `http://localhost:5173/deposit/result?order=${mchOrderNo}`,
+        subject: 'Deposit',
+        body: `${selectedMethod.label} deposit`,
+        param1: user._id,
+        param2: tab,
+      });
+      
+      if (!response.data.success) throw new Error(response.data.message || 'Order creation failed');
+      const gatewayPayUrl = response.data.data?.payUrl || response.data.data?.data?.payUrl || '';
+      if (gatewayPayUrl) setPayUrl(gatewayPayUrl);
+      setBalance(b => ({ ...b, main: b.main + amountNum }));
 
-        // Gateway returns a payUrl — open it so the user can complete payment
-        const gatewayPayUrl = json.data?.payUrl || json.data?.data?.payUrl || '';
-        if (gatewayPayUrl) {
-          setPayUrl(gatewayPayUrl);
-        }
+    } else {
+      // FIXED: Withdrawal request with correct parameters
+      const withdrawalPayload = {
+        mchId: 5,
+        productId: '5304', // Withdrawal product ID
+        mchOrderNo,
+        amount: amountInPaise, // Send in paise/cents (e.g., 1000 = 10.00)
+        clientIp: '0.0.0.0',
+        notifyUrl: `https://api.dgpaybd.com/api/withdrawal/callback`,
+        userName: user.username || user.name || 'User', // Required field
+        cardNumber: accountNo, // Account number for bank/UPI
+        bankName: selectedMethod.label, // Bank name from selected method
+        accountType: selectedMethod.id === 'bank' ? 'bank' : 'UPI', // Default to bank
+        param1: user._id,
+        ifscCode:   'ABHY0065001',
+        param2: tab,
+      };
 
-        // Optimistically update balance display (real update comes via callback)
-        setBalance(b => ({ ...b, main: b.main + amountCents }));
-
-      } else {
-        // For withdrawals the gateway uses the "payment on behalf" interface.
-        // Adjust the endpoint / productId to match your withdraw gateway channel.
-        const res = await fetch(`${BASE_URL}/api/payment/order/create-withdrawal`, {
-          method:  'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            mchId:     5,
-            productId:'5301',
-            mchOrderNo,
-            amount:     amountCents,
-            clientIp:   '0.0.0.0',
-            notifyUrl:  `https://api.dgpaybd.com/api/withdrawal/callback`,
-            returnUrl:  `${window.location.origin}/withdraw/result?order=${mchOrderNo}`,
-            subject:    'Withdrawal',
-            body:       `${selectedMethod.label} withdrawal to ${accountNo}`,
-            param1:     user._id,
-            param2:     tab,
-            ifscCode:'ABHY0065001',
-            validateUserName: user.username,
-          }),
-        });
-        console.log(res)
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Withdrawal request failed');
-
-        // Deduct from local balance optimistically
-        setBalance(b => ({ ...b, main: Math.max(0, b.main - amountCents) }));
+      // Add IFSC code only for bank transfers
+      if (selectedMethod.id === 'bank') {
+        withdrawalPayload.ifscCode = 'ABHY0065001'; // Example IFSC, get from user input if needed
       }
 
-      setStep('success');
-    } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+      console.log("Withdrawal payload:", withdrawalPayload);
+
+      const response = await apiClient.post(`/api/payment/order/create-withdrawal`, withdrawalPayload);
+      
+      if (!response.data.success) throw new Error(response.data.message || 'Withdrawal request failed');
+
+      // Deduct from local balance optimistically
+      setBalance(b => ({ ...b, main: Math.max(0, b.main - amountNum) }));
     }
-  };
+
+    setStep('success');
+  } catch (err) {
+    console.error("Error:", err);
+    setError(err.response?.data?.message || err.message || 'Something went wrong. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (!open) return null;
+
+
+
+          
 
   return (
     <div

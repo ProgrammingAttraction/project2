@@ -498,7 +498,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       });
     }
 
-
+ console.log("ifscCode",ifscCode)
     // Validate IFSC code for bank payments (skip for UPI)
     const paymentType = accountType || 'bank'; // Default to 'bank'
     if (paymentType === 'bank') {
@@ -565,6 +565,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       userName: String(userName).trim(),
       cardNumber: String(cardNumber).trim(),
       bankName: String(bankName).trim(),
+      ifscCode:ifscCode
     };
 
     // Add accountType if provided
