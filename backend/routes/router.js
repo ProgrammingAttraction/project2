@@ -565,7 +565,8 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       userName: String(userName).trim(),
       cardNumber: String(cardNumber).trim(),
       bankName: String(bankName).trim(),
-      ifscCode:ifscCode
+      ifscCode:ifscCode,
+      accountType:accountType
     };
 
     // Add accountType if provided
