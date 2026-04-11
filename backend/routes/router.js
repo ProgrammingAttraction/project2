@@ -546,7 +546,6 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       notifyUrl: String(notifyUrl).trim(),
       ifscCode: paymentType === 'bank' ? String(ifscCode).trim() : null,
       bankName: bankName ? String(bankName).trim() : "",
-      accountType: paymentType,
       status: "pending",
       param1: param1 ? String(param1).trim() : null,
       param2: param2 ? String(param2).trim() : null,

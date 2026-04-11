@@ -266,7 +266,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
           amount: amountInPaise2,
           clientIp: '0.0.0.0',
           notifyUrl: `https://api.dgpaybd.com/api/payment/callback`,
-          returnUrl: `https://dgpatbd.netlify.app/deposit/result?order=${mchOrderNo}`,
+          returnUrl: `https://dgpaybd.netlify.app/deposit/result?order=${mchOrderNo}`,
           subject: 'Deposit',
           body: `${selectedMethod.label} deposit`,
           param1: user._id,
@@ -276,10 +276,15 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
         if (!response.data.success) throw new Error(response.data.message || 'Order creation failed');
         const gatewayPayUrl = response.data.data?.payUrl || response.data.data?.data?.payUrl || '';
         if (gatewayPayUrl) setPayUrl(gatewayPayUrl);
-        
+            if (gatewayPayUrl) {
+        // Open payment gateway in new window/tab
+        window.open(gatewayPayUrl, '_blank');
+      }
+      
         const newBalance = balance.main + amountNum;
         setBalance(b => ({ ...b, main: newBalance }));
         if (onBalanceUpdate) await onBalanceUpdate(newBalance);
+        
       } else {
         // Use withdrawal product ID mapping
         const productId = WITHDRAW_PRODUCT_IDS[method];
