@@ -500,32 +500,16 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
 
  console.log("ifscCode",ifscCode)
     // Validate IFSC code for bank payments (skip for UPI)
-    const paymentType = accountType || 'bank'; // Default to 'bank'
-    if (paymentType === 'bank') {  
-      if (!ifscCode) {
-        return res.status(400).json({
-          success: false,
-          message: "Missing required bank details: ifscCode",
-        });
-      }
-      
-      // Validate IFSC code format: 11 alphanumeric characters, 5th character must be 0
-      const ifscRegex = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
-      if (!ifscRegex.test(ifscCode)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid IFSC code format. Must be 11 alphanumeric characters with 5th character as 0",
-        });
-      }
-    }
+    const paymentType = accountType;
 
     // Check user's balance
     const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
+ console.log("ifscCode3",ifscCode)
 
-    const withdrawalAmount = Number(amount); // Convert from paise/cents
+    const withdrawalAmount = Number(amount)/100; // Convert from paise/cents
     if (user.balance < withdrawalAmount) {
       return res.status(400).json({
         success: false,
@@ -534,6 +518,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
         requested: withdrawalAmount,
       });
     }
+      console.log("dsfsdf")
 
     // Create withdrawal record as PENDING
     const withdrawal = await Withdrawal.create({
@@ -546,6 +531,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       notifyUrl: String(notifyUrl).trim(),
       ifscCode: paymentType === 'bank' ? String(ifscCode).trim() : null,
       bankName: bankName ? String(bankName).trim() : "",
+      accountType: paymentType,
       status: "pending",
       param1: param1 ? String(param1).trim() : null,
       param2: param2 ? String(param2).trim() : null,

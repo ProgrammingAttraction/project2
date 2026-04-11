@@ -311,7 +311,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
         }
 
         const response = await apiClient.post(`/api/payment/order/create-withdrawal`, withdrawalPayload);
-        if (!response.data.success) throw new Error(response.data.message || 'Withdrawal request failed');
+        if (!response.data.success) throw new Error(response.data || 'Withdrawal request failed');
 
         const newBalance = Math.max(0, balance.main - amountNum);
         setBalance(b => ({ ...b, main: newBalance }));
