@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { BANNERS, ALL_GAMES, PILL_CATS, PROVIDERS, SB_TOP, SB_CATS } from "../../components/constants/constants";
+import { BANNERS, ALL_GAMES, PROVIDERS, SB_TOP, SB_CATS } from "../../components/constants/constants";
 import Header from '../../components/header/Header';
 import Sidebar from '../../components/sidebar/Sidebar';
+import { IoIosArrowBack, IoIosArrowForward, IoIosSearch, IoIosFunnel } from "react-icons/io";
+import { FaPlay } from "react-icons/fa";
+import Footer from '../../components/footer/Footer';
 
 const Home = () => {
   const [activeHNav, setActiveHNav] = useState('CASINO');
@@ -12,6 +15,8 @@ const Home = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerClose, setDrawerClose] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -34,10 +39,23 @@ const Home = () => {
   function pickTop(id) { setActiveTop(id); setActiveCat(''); if (isMobile) closeDrawer(); }
   function pickCat(id) { setActiveCat(id); setActiveTop(''); if (isMobile) closeDrawer(); }
 
-  const displayGames = activeProv === 'All'
-    ? ALL_GAMES
-    : ALL_GAMES.filter(g => g.provider === activeProv);
+  // Filter games based on search query and provider
+  const getFilteredGames = () => {
+    let filtered = activeProv === 'All'
+      ? ALL_GAMES
+      : ALL_GAMES.filter(g => g.provider === activeProv);
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(g => 
+        g.name.toLowerCase().includes(query) || 
+        g.provider.toLowerCase().includes(query)
+      );
+    }
+    return filtered;
+  };
 
+  const displayGames = getFilteredGames();
   const topGames = displayGames.filter(g => g.badge === 'hot' || g.badge === 'jackpot');
   const newGames = displayGames.filter(g => g.badge === 'new');
 
@@ -54,12 +72,6 @@ const Home = () => {
       return () => clearInterval(timerRef.current);
     }, [cur, go]);
 
-    const IconArrow = () => (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
-      </svg>
-    );
-
     return (
       <div className="relative rounded-xl overflow-hidden mb-6 bg-gray-900">
         <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${cur * 100}%)` }}>
@@ -68,27 +80,24 @@ const Home = () => {
               <img 
                 src={b.img} 
                 alt={b.title} 
-                className="w-full h-full object-cover block"
+                className="w-full h-full block object-cover"
                 onError={e => { e.target.style.display = 'none'; }} 
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/55 to-transparent flex flex-col justify-center p-7 md:p-9">
-                <span className="font-barlow text-[11px] font-bold tracking-[2px] uppercase text-yellow-400 mb-1.5">{b.tag}</span>
-                <div className="font-barlow text-3xl md:text-4xl font-black text-white leading-tight mb-2.5 max-w-xs">{b.title}</div>
-                <button className="inline-flex items-center gap-1.5 bg-blue-600 text-white border-none rounded-lg px-5 py-2.5 cursor-pointer font-barlow text-sm font-bold tracking-wide uppercase hover:bg-blue-700 transition-all hover:scale-105 w-fit">
-                  {b.cta} <IconArrow />
-                </button>
-              </div>
             </div>
           ))}
         </div>
         <button 
-          className="absolute top-1/2 -translate-y-1/2 left-3 w-9 h-9 rounded-full border-none cursor-pointer bg-white/20 backdrop-blur-sm text-white flex items-center justify-center text-base font-bold hover:bg-white/30 transition-all z-10"
+          className="absolute top-1/2 -translate-y-1/2 left-3 w-9 h-9 rounded-[5px] border-none cursor-pointer bg-white/80 backdrop-blur-sm text-orange-500 flex items-center justify-center text-base font-bold hover:bg-white/30 transition-all z-10"
           onClick={() => go(cur - 1)}
-        >‹</button>
+        >
+          <IoIosArrowBack />
+        </button>
         <button 
-          className="absolute top-1/2 -translate-y-1/2 right-3 w-9 h-9 rounded-full border-none cursor-pointer bg-white/20 backdrop-blur-sm text-white flex items-center justify-center text-base font-bold hover:bg-white/30 transition-all z-10"
+          className="absolute top-1/2 -translate-y-1/2 right-3 w-9 h-9 rounded-[5px] border-none cursor-pointer bg-white/80 backdrop-blur-sm text-orange-500 flex items-center justify-center text-base font-bold hover:bg-white/30 transition-all z-10"
           onClick={() => go(cur + 1)}
-        >›</button>
+        >
+          <IoIosArrowForward />
+        </button>
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
           {BANNERS.map((_, i) => (
             <button 
@@ -104,20 +113,13 @@ const Home = () => {
   };
 
   const GameCard = ({ game }) => {
-    const IconPlay = () => (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5 3 19 12 5 21 5 3" />
-      </svg>
-    );
-
     return (
-      <div className="rounded-xl overflow-hidden bg-white shadow-md cursor-pointer transition-all hover:-translate-y-1 hover:shadow-blue-200/50 relative group">
-        <div className="relative">
+      <div className="rounded-xl overflow-hidden bg-white  cursor-pointer transition-all hover:-translate-y-1 hover:shadow-blue-200/50 relative group">
+        <div className="relative h-full">
           <img
-            className="w-full aspect-[3/4] object-cover block"
+            className="w-full h-full object-cover block"
             src={game.img}
             alt={game.name}
-            onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
           />
           <div className="w-full aspect-[3/4] hidden items-center justify-center text-4xl bg-gradient-to-br from-indigo-100 to-indigo-200 absolute inset-0">{game.emoji || '🎮'}</div>
           {game.badge && (
@@ -129,27 +131,17 @@ const Home = () => {
               {game.badge.toUpperCase()}
             </span>
           )}
-          <div className="absolute inset-0 top-0 bottom-auto h-[calc(100%-48px)] bg-blue-600/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <div className="absolute inset-0 top-0 bottom-0 h-full bg-blue-600/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <div className="w-12 h-12 rounded-full border-4 border-white flex items-center justify-center text-lg text-white bg-white/20">
-              <IconPlay />
+              <FaPlay />
             </div>
           </div>
-        </div>
-        <div className="p-2">
-          <div className="text-xs font-bold text-gray-900 truncate">{game.name}</div>
-          <div className="text-[11px] text-gray-500 mt-0.5">{game.provider}</div>
         </div>
       </div>
     );
   };
 
   const GameSection = ({ title, games, showCount = false, totalCount = 0 }) => {
-    const IconArrow = () => (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
-      </svg>
-    );
-
     if (!games || games.length === 0) return null;
     return (
       <div className="mb-7">
@@ -159,7 +151,10 @@ const Home = () => {
             <span className="text-xs font-semibold text-gray-500">{totalCount} games</span>
           ) : (
             <button className="text-xs font-bold text-blue-600 bg-none border-none cursor-pointer flex items-center gap-1 hover:opacity-75 transition-opacity">
-              See all <IconArrow />
+              See all
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+              </svg>
             </button>
           )}
         </div>
@@ -248,62 +243,110 @@ const Home = () => {
     );
   };
 
+  // Filter panel component
+  const FilterPanel = () => {
+    if (!showFilters) return null;
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-4 mb-6 border border-gray-200">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-barlow font-extrabold text-gray-900 text-base">Filter Games</h3>
+          <button 
+            onClick={() => setShowFilters(false)}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="text-xs font-bold text-gray-500 w-full mb-1">Provider:</span>
+          <div className="flex flex-wrap gap-2">
+            {PROVIDERS.map(p => (
+              <button 
+                key={p} 
+                className={`py-1.5 px-3.5 rounded-full border-2 border-gray-200 bg-white text-xs font-bold text-gray-500 cursor-pointer whitespace-nowrap transition-all hover:bg-blue-600 hover:border-blue-600 hover:text-white ${
+                  activeProv === p ? 'bg-blue-600 border-blue-600 text-white' : ''
+                }`}
+                onClick={() => setActiveProv(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen font-roboto bg-gray-100">
       <Header activeHNav={activeHNav} setActiveHNav={setActiveHNav} drawerOpen={drawerOpen} openDrawer={openDrawer} closeDrawer={closeDrawer} />
       
-      {/* Main layout with proper flex positioning for sticky sidebar */}
       <div className="relative">
         <div className="flex">
-          {/* Sidebar with sticky positioning */}
           <div className="lg:block flex-shrink-0">
             <Sidebar isMobile={isMobile} sbCollapsed={sbCollapsed} activeTop={activeTop} activeCat={activeCat} pickTop={pickTop} pickCat={pickCat} />
           </div>
           
-          {/* Main content area */}
           <main className="flex-1 min-w-0">
             <div className="p-5 pb-10 w-full">
               <BannerSlider />
               
-              {/* Category Pills */}
-              <div className="flex gap-2 overflow-x-auto pb-1 mb-5 scrollbar-none">
-                {PILL_CATS.map(cat => (
-                  <button 
-                    key={cat.id} 
-                    className={`flex items-center gap-1.5 py-1.5 px-3.5 rounded-full border-2 border-gray-200 bg-white cursor-pointer font-nunito text-xs font-bold text-gray-500 whitespace-nowrap transition-all flex-shrink-0 hover:border-blue-600 hover:text-blue-600 hover:bg-indigo-50 ${
-                      activeCat === cat.id ? 'bg-blue-600 border-blue-600 text-white' : ''
-                    }`}
-                    onClick={() => pickCat(cat.id)}
-                  >
-                    <span className="text-base leading-none">{cat.emoji}</span>{cat.label}
-                  </button>
-                ))}
+              {/* Search and Filter Bar */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                <div className="relative flex-1">
+                  <IoIosSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
+                  <input
+                    type="text"
+                    placeholder="Search games by name or provider..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full py-2.5 pl-10 pr-4 rounded-full border-2 border-gray-200 bg-white text-sm font-medium text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-5 rounded-full border-2 transition-all font-bold text-sm whitespace-nowrap ${
+                    showFilters || activeProv !== 'All'
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-blue-600 hover:text-blue-600'
+                  }`}
+                >
+                  <IoIosFunnel className="text-base" />
+                  Filters {(activeProv !== 'All') && <span className="ml-1 bg-white text-blue-600 rounded-full w-5 h-5 text-xs flex items-center justify-center">1</span>}
+                </button>
               </div>
 
-              {/* Provider Filters */}
-              <div className="flex gap-2.5 overflow-x-auto pb-1 mb-6 scrollbar-none items-center">
-                <span className="text-xs font-bold text-gray-500 flex-shrink-0 mr-0.5">Provider:</span>
-                {PROVIDERS.map(p => (
-                  <button 
-                    key={p} 
-                    className={`py-1.5 px-3.5 rounded-full border-2 border-gray-200 bg-white text-xs font-bold text-gray-500 cursor-pointer whitespace-nowrap flex-shrink-0 transition-all hover:bg-blue-600 hover:border-blue-600 hover:text-white ${
-                      activeProv === p ? 'bg-blue-600 border-blue-600 text-white' : ''
-                    }`}
-                    onClick={() => setActiveProv(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+              {/* Filter Panel */}
+              <FilterPanel />
+
+              {/* Search Results Summary */}
+              {searchQuery && (
+                <div className="mb-4 text-sm text-gray-500">
+                  Found <span className="font-bold text-gray-900">{displayGames.length}</span> games for "{searchQuery}"
+                </div>
+              )}
 
               <GameSection title="🔥 Top Games" games={topGames} />
               <GameSection title="🆕 New Arrivals" games={newGames} />
               <GameSection title="🎮 All Games" games={displayGames} showCount={true} totalCount={displayGames.length} />
+
+              <div className='flex  justify-center items-center py-[20px] '>
+                <button className='bg-blue-500 text-white rounded-[5px] px-[40px] py-[10px] cursor-pointer'>Load More</button>
+              </div>
             </div>
+       <Footer/>
+
           </main>
         </div>
       </div>
-      
       <MobileDrawer />
     </div>
   );

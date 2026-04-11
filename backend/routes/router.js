@@ -11,7 +11,7 @@ const crypto = require("crypto");
 // ─── Config ───────────────────────────────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
 const PAYMENT_GATEWAY = "https://dgpaymapi.dgpaym.com";
-const PAYMENT_SECRET_KEY = "ECD81E933F8ABDAC1FB6A1622D2A437B";
+const PAYMENT_SECRET_KEY = "BD9EE7BE3AB07614BAC1B4FF1FEA2739";
 const GATEWAY_BASE_URL = "https://dgpaymapi.dgpaym.com";
 
 // ─── Axios instance for payment gateway ──────────────────────────────────────
@@ -489,7 +489,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       param1,
       param2,
     } = req.body;
-  console.log("",req.body)
+     console.log("",req.body)
     // Validate required fields
     if (!mchId || !productId || !mchOrderNo || !amount || !clientIp || !notifyUrl) {
       return res.status(400).json({
@@ -501,7 +501,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
  console.log("ifscCode",ifscCode)
     // Validate IFSC code for bank payments (skip for UPI)
     const paymentType = accountType || 'bank'; // Default to 'bank'
-    if (paymentType === 'bank') {
+    if (paymentType === 'bank') {  
       if (!ifscCode) {
         return res.status(400).json({
           success: false,
