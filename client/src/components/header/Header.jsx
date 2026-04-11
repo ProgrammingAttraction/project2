@@ -266,7 +266,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
           amount: amountInPaise2,
           clientIp: '0.0.0.0',
           notifyUrl: `https://api.dgpaybd.com/api/payment/callback`,
-          returnUrl: `http://localhost:5173/deposit/result?order=${mchOrderNo}`,
+          returnUrl: `https://dgpatbd.netlify.app/deposit/result?order=${mchOrderNo}`,
           subject: 'Deposit',
           body: `${selectedMethod.label} deposit`,
           param1: user._id,

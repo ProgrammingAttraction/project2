@@ -16,6 +16,7 @@ app.use(
       "http://localhost:5175",
       "http://localhost:5176",
        "https://dgpaybd.com",
+       "https://dgpaybd.netlify.app",
        "*",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
