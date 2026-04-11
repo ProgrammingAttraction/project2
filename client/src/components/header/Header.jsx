@@ -205,7 +205,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
 
       if (tab === 'deposit') {
         const response = await apiClient.post(`/api/payment/order/create`, {
-          mchId: 5,
+          mchId: 8,
           productId: '5301',
           mchOrderNo,
           amount: amountInPaise,
@@ -227,7 +227,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
         if (onBalanceUpdate) await onBalanceUpdate(newBalance);
       } else {
         const withdrawalPayload = {
-          mchId: 5,
+          mchId: 8,
           productId: '5304',
           mchOrderNo,
           amount: amountInPaise,
