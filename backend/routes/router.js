@@ -544,7 +544,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       mchId: String(mchId).trim(),
       productId: String(productId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
-      amount: Number(amount) *100, // Keep original amount (paise/cents)
+      amount:withdrawalAmount, // Keep original amount (paise/cents)
       clientIp: String(clientIp).trim(),
       notifyUrl: String(notifyUrl).trim(),
       userName: String(userName).trim(),
@@ -592,7 +592,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
     }
 
     // Check if withdrawal was successful immediately
-    if (response.data?.code === 200 || response.data?.status === "success") {
+    if (response.data?.retCode === "SUCCESS") {
       // Deduct balance immediately for successful withdrawal
       user.balance = user.balance - withdrawalAmount;
       
