@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FiArrowUp, FiArrowDown, FiDollarSign, FiTrendingUp, FiTrendingDown, FiClock, FiFilter, FiChevronLeft, FiChevronRight, FiChevronsLeft, FiChevronsRight } from 'react-icons/fi';
+import { FaMoneyBillWave, FaWallet, FaSpinner } from 'react-icons/fa';
 import Header from '../../components/header/Header';
 import Sidebar from '../../components/sidebar/Sidebar';
 import axios from 'axios';
@@ -13,15 +15,19 @@ const TransactionHistory = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerClose, setDrawerClose] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
-  const [filter, setFilter] = useState('all'); // 'all', 'deposit', 'withdraw'
+  const [filter, setFilter] = useState('all');
   const [balance, setBalance] = useState(0);
   const [stats, setStats] = useState({
     totalDeposits: 0,
     totalWithdrawals: 0,
     pendingWithdrawals: 0
   });
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPageOptions] = useState([5, 10, 20, 50]);
 
   // Check authentication
   useEffect(() => {
@@ -31,91 +37,50 @@ const TransactionHistory = () => {
     }
   }, [navigate]);
 
-  // Fetch transaction data
+  // Fetch transaction data from combined endpoint
   useEffect(() => {
-    fetchTransactionData();
+    fetchAllTransactions();
   }, []);
 
-  const fetchTransactionData = async () => {
+  const fetchAllTransactions = async () => {
     try {
       const token = localStorage.getItem('token');
       const config = {
         headers: { Authorization: `Bearer ${token}` }
       };
 
-      // Fetch deposits
-      const depositsRes = await axios.get('/api/payment/deposits', config);
+      const response = await axios.get(`${import.meta.env.VITE_API_KEY_Base_URL}/api/transactions/all`, config);
       
-      // Fetch withdrawals
-      const withdrawalsRes = await axios.get('/api/withdraw/history', config);
-      
-      // Fetch current balance
-      const balanceRes = await axios.get('/api/balance', config);
-
-      // Combine and format transactions
-      const depositTransactions = depositsRes.data.data.map(deposit => ({
-        id: deposit._id,
-        type: 'deposit',
-        amount: deposit.realAmount ? deposit.realAmount / 100 : deposit.amount / 100,
-        status: deposit.status,
-        date: new Date(deposit.createdAt),
-        orderId: deposit.mchOrderNo,
-        utr: deposit.utr,
-        paymentMethod: 'Online Payment',
-        details: {
-          productId: deposit.productId,
-          payOrderId: deposit.payOrderId
-        }
-      }));
-
-      const withdrawTransactions = withdrawalsRes.data.data.withdrawals.map(withdraw => ({
-        id: withdraw._id,
-        type: 'withdraw',
-        amount: withdraw.amount,
-        status: withdraw.status,
-        date: new Date(withdraw.requestedAt),
-        orderId: withdraw._id,
-        utr: withdraw.transactionId,
-        paymentMethod: withdraw.withdrawalMethod,
-        details: {
-          accountDetails: withdraw.accountDetails,
-          remarks: withdraw.remarks
-        }
-      }));
-
-      // Combine and sort by date (newest first)
-      const allTransactions = [...depositTransactions, ...withdrawTransactions]
-        .sort((a, b) => b.date - a.date);
-
-      setTransactions(allTransactions);
-      setBalance(balanceRes.data.data.balance);
-      
-      // Calculate stats
-      const totalDeposits = depositTransactions
-        .filter(t => t.status === 'completed')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const totalWithdrawals = withdrawTransactions
-        .filter(t => t.status === 'completed')
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const pendingWithdrawals = withdrawTransactions
-        .filter(t => t.status === 'pending')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      setStats({
-        totalDeposits,
-        totalWithdrawals,
-        pendingWithdrawals
-      });
-
+      if (response.data.success) {
+        const { transactions: allTransactions, stats: transactionStats, balance: currentBalance } = response.data.data;
+        
+        const formattedTransactions = allTransactions.map(transaction => ({
+          id: transaction.id,
+          type: transaction.type,
+          amount: transaction.amount,
+          status: transaction.status,
+          date: new Date(transaction.date),
+          orderId: transaction.orderId,
+          utr: transaction.utr,
+          paymentMethod: transaction.type === 'deposit' 
+            ? 'Online Payment' 
+            : transaction.details?.method || 'Bank Transfer',
+          details: transaction.details
+        }));
+        
+        setTransactions(formattedTransactions);
+        setBalance(currentBalance);
+        setStats({
+          totalDeposits: transactionStats.totalDeposits,
+          totalWithdrawals: transactionStats.totalWithdrawals,
+          pendingWithdrawals: transactionStats.pendingWithdrawals
+        });
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
       if (error.response?.status === 401) {
         navigate('/login');
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -131,6 +96,11 @@ const TransactionHistory = () => {
     return () => { document.body.style.overflow = ''; };
   }, [drawerOpen]);
 
+  // Reset to first page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
   function openDrawer() { setDrawerClose(false); setDrawerOpen(true); }
   function closeDrawer() {
     setDrawerClose(true);
@@ -145,12 +115,30 @@ const TransactionHistory = () => {
     return t.type === filter;
   });
 
-  const getStatusColor = (status, type) => {
-    switch(status) {
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentTransactions = filteredTransactions.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleItemsPerPageChange = (value) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+  };
+
+  const getStatusColor = (status) => {
+    switch(status?.toLowerCase()) {
       case 'completed':
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'processing':
+        return 'bg-blue-100 text-blue-800';
       case 'failed':
       case 'timeout':
         return 'bg-red-100 text-red-800';
@@ -162,13 +150,14 @@ const TransactionHistory = () => {
   };
 
   const getStatusText = (status) => {
-    switch(status) {
+    switch(status?.toLowerCase()) {
       case 'completed': return 'Completed';
       case 'pending': return 'Pending';
+      case 'processing': return 'Processing';
       case 'failed': return 'Failed';
       case 'timeout': return 'Timeout';
       case 'cancelled': return 'Cancelled';
-      default: return status;
+      default: return status || 'Unknown';
     }
   };
 
@@ -192,7 +181,7 @@ const TransactionHistory = () => {
     }).format(amount);
   };
 
-  const StatCard = ({ title, value, icon, color }) => (
+  const StatCard = ({ title, value, icon: Icon, color }) => (
     <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between">
         <div>
@@ -202,51 +191,7 @@ const TransactionHistory = () => {
           </p>
         </div>
         <div className={`w-10 h-10 rounded-full flex items-center justify-center ${color.replace('text', 'bg').replace('800', '100')}`}>
-          <span className="text-xl">{icon}</span>
-        </div>
-      </div>
-    </div>
-  );
-
-  const TransactionRow = ({ transaction }) => (
-    <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-            transaction.type === 'deposit' ? 'bg-green-100' : 'bg-red-100'
-          }`}>
-            <span className="text-xl">
-              {transaction.type === 'deposit' ? '💰' : '💸'}
-            </span>
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-gray-900 capitalize">
-                {transaction.type === 'deposit' ? 'Deposit' : 'Withdrawal'}
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(transaction.status, transaction.type)}`}>
-                {getStatusText(transaction.status)}
-              </span>
-            </div>
-            <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-              <div>Order ID: {transaction.orderId}</div>
-              {transaction.utr && <div>UTR/Ref: {transaction.utr}</div>}
-              <div>{formatDate(transaction.date)}</div>
-              {transaction.details?.paymentMethod && (
-                <div className="capitalize">Method: {transaction.details.paymentMethod}</div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className={`text-lg font-bold ${
-            transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {transaction.type === 'deposit' ? '+' : '-'} {formatBDT(transaction.amount)}
-          </div>
-          {transaction.status === 'pending' && transaction.type === 'withdraw' && (
-            <div className="text-xs text-yellow-600 mt-1">Awaiting processing</div>
-          )}
+          <Icon className="text-xl" />
         </div>
       </div>
     </div>
@@ -255,15 +200,140 @@ const TransactionHistory = () => {
   const FilterButton = ({ value, label, count }) => (
     <button
       onClick={() => setFilter(value)}
-      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
         filter === value
           ? 'bg-blue-600 text-white shadow-md'
           : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
       }`}
     >
+      {value === 'all' && <FiFilter className="text-sm" />}
+      {value === 'deposit' && <FiTrendingUp className="text-sm" />}
+      {value === 'withdraw' && <FiTrendingDown className="text-sm" />}
       {label} {count !== undefined && `(${count})`}
     </button>
   );
+
+  const Pagination = () => {
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    const pageNumbers = [];
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i);
+    }
+
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-4 border-t border-gray-200">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span>Show</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+            className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {itemsPerPageOptions.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          <span>entries</span>
+          <span className="ml-4">
+            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredTransactions.length)} of {filteredTransactions.length} entries
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1}
+            className={`p-2 rounded-md transition-colors ${
+              currentPage === 1
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+            }`}
+          >
+            <FiChevronsLeft className="text-sm" />
+          </button>
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className={`p-2 rounded-md transition-colors ${
+              currentPage === 1
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+            }`}
+          >
+            <FiChevronLeft className="text-sm" />
+          </button>
+
+          {startPage > 1 && (
+            <>
+              <button
+                onClick={() => handlePageChange(1)}
+                className="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
+              >
+                1
+              </button>
+              {startPage > 2 && <span className="px-2 text-gray-500">...</span>}
+            </>
+          )}
+
+          {pageNumbers.map(number => (
+            <button
+              key={number}
+              onClick={() => handlePageChange(number)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                currentPage === number
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+              }`}
+            >
+              {number}
+            </button>
+          ))}
+
+          {endPage < totalPages && (
+            <>
+              {endPage < totalPages - 1 && <span className="px-2 text-gray-500">...</span>}
+              <button
+                onClick={() => handlePageChange(totalPages)}
+                className="px-3 py-1 rounded-md text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 border border-gray-300"
+              >
+                {totalPages}
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className={`p-2 rounded-md transition-colors ${
+              currentPage === totalPages
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+            }`}
+          >
+            <FiChevronRight className="text-sm" />
+          </button>
+          <button
+            onClick={() => handlePageChange(totalPages)}
+            disabled={currentPage === totalPages}
+            className={`p-2 rounded-md transition-colors ${
+              currentPage === totalPages
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+            }`}
+          >
+            <FiChevronsRight className="text-sm" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const MobileDrawer = () => {
     if (!drawerOpen) return null;
@@ -282,7 +352,7 @@ const TransactionHistory = () => {
           <div className="flex items-center justify-between p-3.5 border-b border-gray-200 bg-gray-50">
             <div className="flex flex-col items-center cursor-pointer leading-none gap-px">
               <div className="flex items-center gap-1">
-                <span className="text-base">👑</span>
+                <FaMoneyBillWave className="text-base text-blue-600" />
                 <span className="font-barlow text-[22px] font-black text-blue-600 tracking-[1.5px]">GLORY</span>
               </div>
               <span className="font-barlow text-[10px] font-bold text-red-600 tracking-[3.5px] uppercase">Casino</span>
@@ -301,17 +371,6 @@ const TransactionHistory = () => {
       </>
     );
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading transactions...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen font-roboto bg-gray-100">
@@ -347,12 +406,17 @@ const TransactionHistory = () => {
               {/* Balance and Stats Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-5 text-white shadow-lg">
-                  <p className="text-blue-100 text-sm font-medium">Current Balance</p>
-                  <p className="text-3xl font-bold mt-2">{formatBDT(balance)}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-blue-100 text-sm font-medium">Current Balance</p>
+                      <p className="text-3xl font-bold mt-2">{formatBDT(balance)}</p>
+                    </div>
+                    <FaWallet className="text-3xl text-blue-200" />
+                  </div>
                 </div>
-                <StatCard title="Total Deposits" value={stats.totalDeposits} icon="💰" color="text-green-600" />
-                <StatCard title="Total Withdrawals" value={stats.totalWithdrawals} icon="💸" color="text-red-600" />
-                <StatCard title="Pending Withdrawals" value={stats.pendingWithdrawals} icon="⏳" color="text-yellow-600" />
+                <StatCard title="Total Deposits" value={stats.totalDeposits} icon={FiTrendingUp} color="text-green-600" />
+                <StatCard title="Total Withdrawals" value={stats.totalWithdrawals} icon={FiTrendingDown} color="text-red-600" />
+                <StatCard title="Pending Withdrawals" value={stats.pendingWithdrawals} icon={FiClock} color="text-yellow-600" />
               </div>
 
               {/* Filters */}
@@ -362,10 +426,10 @@ const TransactionHistory = () => {
                 <FilterButton value="withdraw" label="Withdrawals" count={transactions.filter(t => t.type === 'withdraw').length} />
               </div>
 
-              {/* Transactions List */}
+              {/* Transactions Table */}
               {filteredTransactions.length === 0 ? (
                 <div className="bg-white rounded-xl p-12 text-center shadow-sm">
-                  <div className="text-6xl mb-4">📭</div>
+                  <FiDollarSign className="text-6xl text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No transactions found</h3>
                   <p className="text-gray-500 mb-4">
                     {filter === 'all' 
@@ -382,11 +446,71 @@ const TransactionHistory = () => {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {filteredTransactions.map(transaction => (
-                    <TransactionRow key={transaction.id} transaction={transaction} />
-                  ))}
-                </div>
+                <>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Order ID</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Payment Method</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">UTR/Reference</th>
+                            <th className="text-left px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {currentTransactions.map((transaction) => (
+                            <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  transaction.type === 'deposit' 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {transaction.type === 'deposit' ? <FiArrowUp className="text-xs" /> : <FiArrowDown className="text-xs" />}
+                                  {transaction.type === 'deposit' ? 'Deposit' : 'Withdrawal'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm font-mono text-gray-700">{transaction.orderId}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`text-sm font-semibold ${
+                                  transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {transaction.type === 'deposit' ? '+' : '-'} {formatBDT(transaction.amount)}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(transaction.status)}`}>
+                                  {transaction.status === 'processing' && <FaSpinner className="text-xs animate-spin" />}
+                                  {getStatusText(transaction.status)}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-600 capitalize">{transaction.paymentMethod}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm font-mono text-gray-600">
+                                  {transaction.utr || '-'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-600">{formatDate(transaction.date)}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  
+                  {/* Pagination */}
+                  {totalPages > 1 && <Pagination />}
+                </>
               )}
             </div>
           </main>

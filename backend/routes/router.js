@@ -525,7 +525,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const withdrawalAmount = Number(amount) / 100; // Convert from paise/cents
+    const withdrawalAmount = Number(amount); // Convert from paise/cents
     if (user.balance < withdrawalAmount) {
       return res.status(400).json({
         success: false,
@@ -795,7 +795,7 @@ router.post("/withdrawal/callback", async (req, res) => {
     }
     
     // Convert amounts from paise/cents to rupees
-    const amountInRupees = (realAmount || amount) / 100;
+    const amountInRupees =income ? income / 100 : 0;
     const incomeInRupees = income ? income / 100 : 0;
     
     // Update withdrawal based on status (status: 1 = success)
