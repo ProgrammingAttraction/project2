@@ -1038,6 +1038,7 @@ router.get("/balance", verifyToken, async (req, res) => {
 
 
 // ─── 9. Get All User Transactions (Combined) ───────────────────────────────────
+// ─── 9. Get All User Transactions (Combined) ───────────────────────────────────
 router.get("/transactions/all", verifyToken, async (req, res) => {
   try {
     // Fetch deposits
@@ -1045,8 +1046,10 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
     
-    // Fetch user with withdrawal history
-    const user = await User.findById(req.userId).select("withdrawHistory");
+    // Fetch withdrawals
+    const withdrawals = await Withdrawal.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .limit(100);
     
     // Format deposits
     const formattedDeposits = deposits.map(deposit => ({
@@ -1059,23 +1062,28 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
       utr: deposit.utr,
       details: {
         productId: deposit.productId,
-        payOrderId: deposit.payOrderId
+        payOrderId: deposit.payOrderId,
+        paymentMethod: "Online Payment"
       }
     }));
     
     // Format withdrawals
-    const formattedWithdrawals = user.withdrawHistory.map(withdraw => ({
+    const formattedWithdrawals = withdrawals.map(withdraw => ({
       id: withdraw._id,
       type: "withdraw",
-      amount: withdraw.amount,
+      amount: withdraw.realAmount ? withdraw.realAmount / 100 : withdraw.amount / 100,
       status: withdraw.status,
-      date: withdraw.requestedAt,
-      orderId: withdraw._id,
-      utr: withdraw.transactionId,
+      date: withdraw.createdAt,
+      orderId: withdraw.mchOrderNo,
+      utr: withdraw.utr,
       details: {
-        method: withdraw.withdrawalMethod,
-        accountDetails: withdraw.accountDetails,
-        remarks: withdraw.remarks
+        method: withdraw.bankName || "Bank Transfer",
+        accountDetails: {
+          bankName: withdraw.bankName,
+          ifscCode: withdraw.ifscCode,
+          userName: withdraw.userName
+        },
+        remarks: withdraw.rejectReason || null
       }
     }));
     
@@ -1092,9 +1100,12 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
         .filter(t => t.status === "completed")
         .reduce((sum, t) => sum + t.amount, 0),
       pendingWithdrawals: formattedWithdrawals
-        .filter(t => t.status === "pending")
+        .filter(t => t.status === "pending" || t.status === "processing")
         .reduce((sum, t) => sum + t.amount, 0)
     };
+    
+    // Get user balance
+    const user = await User.findById(req.userId).select("balance");
     
     res.status(200).json({
       success: true,
@@ -1106,6 +1117,7 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
     });
     
   } catch (error) {
+    console.error("Error fetching transactions:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching transactions",
@@ -1113,6 +1125,5 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

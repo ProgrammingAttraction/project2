@@ -31,77 +31,27 @@ import { FaBangladeshiTakaSign } from "react-icons/fa6";
 import { TbCoinTaka } from 'react-icons/tb';
 
 // ─── Payment method → gateway productId mapping ───────────────────────────────
-const DEPOSIT_PRODUCT_IDS = {
-  bkash:  '5301',
-  nagad:  '5302',
-  rocket: '5304',
+const PRODUCT_IDS = {
+  bkash:  '3001',
+  nagad:  '3002',
+  rocket: '3003',
+  upay:   '3004',
+  bank:   '3005',
 };
 
-const WITHDRAW_PRODUCT_IDS = {
-  bkash:  '5304',
-  nagad:  '5305',
-  rocket: '5306',
-};
-
-// Updated deposit methods with custom icons/images
 const DEPOSIT_METHODS = [
-  { 
-    id: 'bkash',   
-    label: 'bKash',        
-    icon: FaMobileAlt, 
-    color: '#e2136e', 
-    min: 100,  
-    max: 25000,
-    imageUrl: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/001/small_2x/bkash-logo-horizontal-bangla-mobile-banking-app-icon-free-png.png'
-  },
-  { 
-    id: 'nagad',   
-    label: 'Nagad',        
-    icon: FaMobileAlt, 
-    color: '#f26522', 
-    min: 100,  
-    max: 25000,
-    imageUrl: 'https://media.prothomalo.com/prothomalo-english%2F2020-04%2Fcada797e-1d38-4a22-ae54-9a3317d35f39%2FNagad.png'
-  },
-  { 
-    id: 'rocket',  
-    label: 'Rocket',       
-    icon: FaMobileAlt, 
-    color: '#8b2fc9', 
-    min: 100,  
-    max: 25000,
-    imageUrl: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small/rocket-color-logo-mobile-banking-icon-free-png.png'
-  },
+  { id: 'bkash',   label: 'bKash',        icon: FaMobileAlt, color: '#e2136e', min: 100,  max: 25000  },
+  { id: 'nagad',   label: 'Nagad',        icon: FaMobileAlt, color: '#f26522', min: 100,  max: 25000  },
+  { id: 'rocket',  label: 'Rocket',       icon: FaMobileAlt, color: '#8b2fc9', min: 100,  max: 25000  },
+  { id: 'upay',    label: 'Upay',         icon: FaMobileAlt, color: '#0066cc', min: 200,  max: 50000  },
+  { id: 'bank',    label: 'Bank Transfer', icon: FaUniversity, color: '#1a6b3c', min: 500,  max: 100000 },
 ];
 
 const WITHDRAW_METHODS = [
-  { 
-    id: 'bkash',  
-    label: 'bKash',  
-    icon: FaMobileAlt, 
-    color: '#e2136e', 
-    min: 200, 
-    max: 20000,
-    imageUrl: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/001/small_2x/bkash-logo-horizontal-bangla-mobile-banking-app-icon-free-png.png'
-  },
-  { 
-    id: 'nagad',  
-    label: 'Nagad',  
-    icon: FaMobileAlt, 
-    color: '#f26522', 
-    min: 200, 
-    max: 20000,
-    imageUrl: 'https://media.prothomalo.com/prothomalo-english%2F2020-04%2Fcada797e-1d38-4a22-ae54-9a3317d35f39%2FNagad.png'
-  },
-  { 
-    id: 'rocket', 
-    label: 'Rocket', 
-    icon: FaMobileAlt, 
-    color: '#8b2fc9', 
-    min: 200, 
-    max: 20000,
-    imageUrl: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small/rocket-color-logo-mobile-banking-icon-free-png.png'
-  },
+  { id: 'bkash',  label: 'bKash',  icon: FaMobileAlt, color: '#e2136e', min: 200, max: 20000 },
+  { id: 'nagad',  label: 'Nagad',  icon: FaMobileAlt, color: '#f26522', min: 200, max: 20000 },
+  { id: 'rocket', label: 'Rocket', icon: FaMobileAlt, color: '#8b2fc9', min: 200, max: 20000 },
+  { id: 'bank',   label: 'Bank',   icon: FaUniversity, color: '#1a6b3c', min: 500, max: 50000 },
 ];
 
 const QUICK_AMOUNTS = [200, 500, 1000, 2000, 5000, 10000];
@@ -251,17 +201,13 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
 
       const mchOrderNo = makeMchOrderNo(user._id);
       const amountNum = parseFloat(amount);
-      const amountInPaise = Math.round(amountNum * 100); // Convert to paise/cents
-      const amountInPaise2 = Math.round(amountNum * 100);
+      const amountInPaise = Math.round(amountNum);
+      const amountInPaise2 = Math.round(100*100);
 
       if (tab === 'deposit') {
-        // Use deposit product ID mapping
-        const productId = DEPOSIT_PRODUCT_IDS[method];
-        if (!productId) throw new Error('Invalid payment method');
-        
         const response = await apiClient.post(`/api/payment/order/create`, {
           mchId: 8,
-          productId: productId,
+          productId: '5301',
           mchOrderNo,
           amount: amountInPaise2,
           clientIp: '0.0.0.0',
@@ -281,13 +227,9 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
         setBalance(b => ({ ...b, main: newBalance }));
         if (onBalanceUpdate) await onBalanceUpdate(newBalance);
       } else {
-        // Use withdrawal product ID mapping
-        const productId = WITHDRAW_PRODUCT_IDS[method];
-        if (!productId) throw new Error('Invalid withdrawal method');
-        
         const withdrawalPayload = {
           mchId: 8,
-          productId: productId,
+          productId: '5304',
           mchOrderNo,
           amount: amountInPaise,
           clientIp: '0.0.0.0',
@@ -471,15 +413,9 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
                           onMouseEnter={e => e.currentTarget.style.borderColor = m.color}
                           onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'}
                         >
-                          {m.imageUrl ? (
-                            <img 
-                              src={m.imageUrl} 
-                              alt={m.label}
-                              className="w-20 h-20 object-contain"
-                            />
-                          ) : (
-                            <MethodIconComponent className="text-3xl" style={{ color: m.color }} />
-                          )}
+                          <MethodIconComponent className="text-3xl" style={{ color: m.color }} />
+                          <span className="text-white text-sm font-bold">{m.label}</span>
+                          <span className="text-gray-500 text-xs">Min ৳{m.min.toLocaleString()}</span>
                         </button>
                       );
                     })}
@@ -495,6 +431,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
                   </button>
 
                   <div className="flex items-center gap-3 mb-5 p-3 rounded-xl bg-white/5 border border-white/10">
+                    <MethodIcon className="text-3xl" style={{ color: selectedMethod.color }} />
                     <div>
                       <p className="text-white font-bold">{selectedMethod.label}</p>
                       <p className="text-gray-400 text-xs">Min ৳{selectedMethod.min.toLocaleString()} — Max ৳{selectedMethod.max.toLocaleString()}</p>
@@ -546,7 +483,7 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
                     onClick={handleAmountNext}
                     className="w-full py-3.5 rounded-xl text-white font-bold text-sm tracking-wide transition-all hover:scale-[1.02] active:scale-[0.98] bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30"
                   >
-                    Continue
+                    Continue <FaArrowRight className="inline ml-2 text-xs" />
                   </button>
                 </div>
               )}
