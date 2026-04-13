@@ -1008,8 +1008,8 @@ router.post("/withdrawal/callback", async (req, res) => {
     }
     
     // FIX: Use 'amount' field for refund, not 'income' (income is 0 for failed transactions)
-    const amountInRupees = amount ? amount / 100 : 0;
-    const incomeInRupees = income ? income / 100 : 0;
+    const amountInRupees = amount;
+    const incomeInRupees = income;
     
     console.log(`💰 Amount in rupees: ${amountInRupees} (from amount field: ${amount})`);
     console.log(`💰 Income in rupees: ${incomeInRupees} (from income field: ${income})`);
