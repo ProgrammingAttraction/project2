@@ -855,72 +855,43 @@ router.post("/withdrawal/callback", async (req, res) => {
         console.log(`📝 Updated user ${withdrawal.userId}'s withdrawal history`);
       }
       
-    } else if (status === 2) {
-      // Withdrawal FAILED - Need to REFUND the balance back to user
-      withdrawal.status = "failed";
-      withdrawal.rejectReason = callbackData.rejectReason || "Payment gateway rejected";
-      withdrawal.completedAt = new Date();
-      withdrawal.gatewayResponse = callbackData;
-      await withdrawal.save();
-      
-      console.log(`❌ Withdrawal ${mchOrderNo} marked as failed`);
-      
-      // REFUND the amount back to user's balance (amount is in paise, convert to rupees)
-      const user = await User.findById(withdrawal.userId);
-      
-      if (user) {
-        const refundAmount = amountInRupees;
-        user.balance = (user.balance || 0) + refundAmount;
-        
-        // Update withdrawal history status
-        if (user.withdrawHistory && user.withdrawHistory.length > 0) {
-          for (let i = 0; i < user.withdrawHistory.length; i++) {
-            if (user.withdrawHistory[i].status === "pending" && 
-                user.withdrawHistory[i].amount === amountInRupees) {
-              user.withdrawHistory[i].status = "failed";
-              user.withdrawHistory[i].remarks = withdrawal.rejectReason;
-              user.withdrawHistory[i].processedAt = new Date();
-              break;
-            }
-          }
+    } 
+    
+    else if (status === 2 || status === 4 || status === 5) {
+  // Failed/Rejected/Error - REFUND
+  withdrawal.status = "failed";
+  withdrawal.rejectReason = callbackData.rejectReason || "Payment gateway rejected";
+  withdrawal.completedAt = new Date();
+  withdrawal.gatewayResponse = callbackData;
+  await withdrawal.save();
+  
+  console.log(`❌ Withdrawal ${mchOrderNo} marked as failed (status: ${status})`);
+  
+  const user = await User.findById(withdrawal.userId);
+  
+  if (user) {
+    const refundAmount = amountInRupees;
+    const oldBalance = user.balance;
+    user.balance = (user.balance || 0) + refundAmount;
+    
+    // Update withdrawal history status
+    if (user.withdrawHistory && user.withdrawHistory.length > 0) {
+      for (let i = 0; i < user.withdrawHistory.length; i++) {
+        if (user.withdrawHistory[i].status === "pending" && 
+            user.withdrawHistory[i].amount === amountInRupees) {
+          user.withdrawHistory[i].status = "failed";
+          user.withdrawHistory[i].remarks = withdrawal.rejectReason;
+          user.withdrawHistory[i].processedAt = new Date();
+          break;
         }
-        
-        await user.save();
-        console.log(`💰 REFUNDED ${refundAmount} to user ${withdrawal.userId}'s balance. New balance: ${user.balance}`);
       }
-      
-    } else if (status === 3) {
-      // Withdrawal timeout/expired - Also REFUND
-      withdrawal.status = "timeout";
-      withdrawal.completedAt = new Date();
-      withdrawal.gatewayResponse = callbackData;
-      await withdrawal.save();
-      
-      console.log(`⏰ Withdrawal ${mchOrderNo} marked as timeout`);
-      
-      const user = await User.findById(withdrawal.userId);
-      
-      if (user) {
-        const refundAmount = amountInRupees;
-        user.balance = (user.balance || 0) + refundAmount;
-        
-        if (user.withdrawHistory && user.withdrawHistory.length > 0) {
-          for (let i = 0; i < user.withdrawHistory.length; i++) {
-            if (user.withdrawHistory[i].status === "pending" && 
-                user.withdrawHistory[i].amount === amountInRupees) {
-              user.withdrawHistory[i].status = "failed";
-              user.withdrawHistory[i].remarks = "Transaction timeout";
-              user.withdrawHistory[i].processedAt = new Date();
-              break;
-            }
-          }
-        }
-        
-        await user.save();
-        console.log(`💰 REFUNDED ${refundAmount} to user ${withdrawal.userId} due to timeout. New balance: ${user.balance}`);
-      }
-      
-    } else {
+    }
+    
+    await user.save();
+    console.log(`💰 REFUNDED ${refundAmount} to user ${withdrawal.userId}. Old balance: ${oldBalance}, New balance: ${user.balance}`);
+  }
+}
+    else {
       // Unknown status - Also refund to be safe
       withdrawal.status = "failed";
       withdrawal.rejectReason = `Unknown status: ${status}`;
