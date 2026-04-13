@@ -1327,7 +1327,7 @@ router.get("/transactions/all", verifyToken, async (req, res) => {
     const formattedWithdrawals = withdrawals.map(withdraw => ({
       id: withdraw._id,
       type: "withdraw",
-      amount: withdraw.realAmount ? withdraw.realAmount / 100 : withdraw.amount / 100,
+      amount:withdraw.amount,
       status: withdraw.status,
       date: withdraw.createdAt,
       orderId: withdraw.mchOrderNo,
