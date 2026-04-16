@@ -370,9 +370,14 @@ router.post("/payment/callback", async (req, res) => {
     }
     
     if (status === 1) {
+      // Convert from smallest currency unit (cents/paisa) to main unit
+      const amountInMainUnit = amount / 100;
+      const realAmountInMainUnit = realAmount / 100;
+      const incomeInMainUnit = income / 100;
+      
       deposit.status = "completed";
-      deposit.realAmount = realAmount || amount/100;
-      deposit.income = income;
+      deposit.realAmount = realAmountInMainUnit;  // Fixed: using realAmount
+      deposit.income = incomeInMainUnit;
       deposit.utr = utr;
       deposit.payOrderId = payOrderId;
       deposit.paySuccessTime = paySuccessTime;
@@ -380,15 +385,17 @@ router.post("/payment/callback", async (req, res) => {
       await deposit.save();
       
       console.log(`✅ Deposit ${mchOrderNo} marked as completed`);
+      console.log(`   Amount: ${amountInMainUnit}, Real Amount: ${realAmountInMainUnit}, Income: ${incomeInMainUnit}`);
       
       const userId = param1 || deposit.userId;
       const user = await User.findById(userId);
       if (user) {
         if (user.balance === undefined) user.balance = 0;
-        const amountToAdd = (realAmount || amount/100);
+        const amountToAdd = amountInMainUnit;  // Using the converted amount
         user.balance = (user.balance || 0) + amountToAdd;
         
         if (!user.depositHistory) user.depositHistory = [];
+        
         user.depositHistory.push({
           amount: amountToAdd,
           orderId: payOrderId,

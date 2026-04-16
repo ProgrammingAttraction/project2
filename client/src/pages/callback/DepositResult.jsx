@@ -77,7 +77,9 @@ function formatAmount(cents) {
 
 function formatDate(dateStr) {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("en-BD", {
+  // Handle Unix timestamp
+  const timestamp = typeof dateStr === 'number' ? dateStr : new Date(dateStr).getTime() / 1000;
+  return new Date(timestamp * 1000).toLocaleString("en-BD", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -135,10 +137,9 @@ export default function DepositResult() {
 
   const [status, setStatus] = useState("loading");
   const [deposit, setDeposit] = useState(null);
-  const [gatewayData, setGatewayData] = useState(null);
   const [error, setError] = useState(null);
   const [pollCount, setPollCount] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const pollRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -153,7 +154,7 @@ export default function DepositResult() {
     try {
       const token = localStorage.getItem("token");
 
-      // 1. Check local DB status first
+      // Check local DB status
       const localRes = await axios.get(
         `${BASE_URL}/api/payment/deposit/status`,
         {
@@ -161,13 +162,16 @@ export default function DepositResult() {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         }
       );
-
+      
+      console.log("Local status response:", localRes.data);
+      
       if (!mountedRef.current) return;
 
       if (localRes.data?.success) {
         const dep = localRes.data.data;
         setDeposit(dep);
 
+        // Update status based on deposit status
         if (dep.status === "completed") {
           setStatus("completed");
           clearInterval(pollRef.current);
@@ -185,30 +189,13 @@ export default function DepositResult() {
           clearInterval(pollRef.current);
           return;
         }
-      }
 
-      // 2. If still pending — query gateway directly
-      const mchId = import.meta.env.VITE_MCH_ID;
-      if (mchId) {
-        const queryRes = await axios.post(
-          `${BASE_URL}/api/payment/order/query`,
-          { mchId, mchOrderNo: orderNo },
-          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
-        );
-
-        if (!mountedRef.current) return;
-
-        if (queryRes.data?.success) {
-          setGatewayData(queryRes.data.data);
-
-          const gwStatus = queryRes.data.data?.data?.status;
-          if (gwStatus === 1) setStatus("completed");
-          else if (gwStatus === 3) setStatus("timeout");
-          else if (gwStatus === 11) setStatus("failed");
-          else setStatus("pending");
+        if (dep.status === "pending") {
+          setStatus("pending");
         }
       } else {
-        setStatus("pending");
+        setStatus("not_found");
+        clearInterval(pollRef.current);
       }
 
       setPollCount((c) => c + 1);
@@ -226,39 +213,94 @@ export default function DepositResult() {
 
   useEffect(() => {
     mountedRef.current = true;
-    fetchStatus();
+    
+    // Show loader for 1 second before first fetch
+    const timer = setTimeout(() => {
+      setInitialLoad(false);
+      fetchStatus();
+    }, 1000);
 
     // Poll every 5 seconds for up to 2 minutes
     pollRef.current = setInterval(() => {
-      if (pollCount >= 24) {
+      if (!initialLoad && pollCount >= 24) {
         clearInterval(pollRef.current);
         return;
       }
-      fetchStatus();
+      if (!initialLoad) {
+        fetchStatus();
+      }
     }, 5000);
 
     return () => {
       mountedRef.current = false;
+      clearTimeout(timer);
       clearInterval(pollRef.current);
     };
   }, [orderNo]);
 
   // Stop polling when resolved
   useEffect(() => {
-    if (["completed", "failed", "not_found"].includes(status)) {
+    if (["completed", "failed", "not_found", "timeout"].includes(status)) {
       clearInterval(pollRef.current);
     }
   }, [status]);
 
+  // Show loader for first second
+  if (initialLoad) {
+    const cfg = STATUS_CONFIG.loading;
+    const Icon = cfg.icon;
+    return (
+      <div
+        className={`min-h-screen bg-gradient-to-br ${cfg.bg} flex items-center justify-center p-4 transition-all duration-700`}
+        style={{ fontFamily: "'DM Sans', sans-serif" }}
+      >
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');`}</style>
+        
+        <div className="relative w-full max-w-md">
+          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+            <div
+              className="h-1 w-full transition-all duration-700"
+              style={{ background: `linear-gradient(90deg, transparent, ${cfg.color}, transparent)` }}
+            />
+            <div className="p-8">
+              <div className="flex flex-col items-center text-center mb-8">
+                <div
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5 transition-all duration-700"
+                  style={{
+                    background: `${cfg.color}18`,
+                    border: `1px solid ${cfg.color}40`,
+                    boxShadow: `0 0 40px ${cfg.color}20`,
+                  }}
+                >
+                  <Icon
+                    size={38}
+                    style={{ color: cfg.color }}
+                    className="animate-spin"
+                  />
+                </div>
+                <span
+                  className={`text-xs font-semibold uppercase tracking-widest px-3 py-1 rounded-full border mb-3 ${cfg.badge}`}
+                >
+                  {cfg.label}
+                </span>
+                <p className="text-slate-400 text-sm mt-2 leading-relaxed">
+                  Please wait while we verify your payment…
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.loading;
   const Icon = cfg.icon;
 
-  const displayAmount =
-    deposit?.realAmount ?? deposit?.amount ?? gatewayData?.data?.amount ?? null;
+  const displayAmount = deposit?.realAmount ?? deposit?.amount ?? null;
   const displayIncome = deposit?.income ?? null;
-  const displayUtr = deposit?.utr ?? gatewayData?.data?.utr ?? null;
-  const displayTime =
-    deposit?.paySuccessTime ?? gatewayData?.data?.paySuccessTime ?? null;
+  const displayUtr = deposit?.utr ?? null;
+  const displayTime = deposit?.paySuccessTime ?? null;
 
   return (
     <div
@@ -321,7 +363,7 @@ export default function DepositResult() {
               </span>
 
               {/* Amount */}
-              {displayAmount !== null && (
+              {displayAmount !== null && displayAmount !== undefined && (
                 <div className="text-4xl font-bold text-white mt-1 tracking-tight">
                   {formatAmount(displayAmount)}
                 </div>
@@ -355,7 +397,7 @@ export default function DepositResult() {
                     copyable
                   />
                 )}
-                {displayIncome !== null && (
+                {displayIncome !== null && displayIncome !== undefined && (
                   <InfoRow
                     icon={FiDollarSign}
                     label="Credited"
