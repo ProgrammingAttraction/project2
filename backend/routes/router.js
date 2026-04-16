@@ -319,6 +319,107 @@ router.post("/payment/order/query", async (req, res) => {
 });
 
 // ─── 3. Collection Result Notification / Callback ────────────────────────────
+// router.post("/payment/callback", async (req, res) => {
+//   try {
+//     console.log("📥 Callback received:", req.body);
+    
+//     const callbackData = req.body;
+    
+//     const {
+//       mchOrderNo,
+//       mchId,
+//       payOrderId,
+//       amount,
+//       realAmount,
+//       income,
+//       status,
+//       paySuccessTime,
+//       utr,
+//       param1,
+//       param2,
+//       sign
+//     } = callbackData;
+    
+//     if (!mchOrderNo || !mchId || !payOrderId) {
+//       console.error("❌ Missing required fields in callback");
+//       return res.status(200).send("success");
+//     }
+    
+//     const payloadForSign = { ...callbackData };
+//     delete payloadForSign.sign;
+    
+//     const calculatedSign = generateSign(payloadForSign, PAYMENT_SECRET_KEY);
+    
+//     if (calculatedSign !== sign) {
+//       console.error("❌ Invalid signature in callback");
+//       return res.status(200).send("success");
+//     }
+    
+//     console.log("✅ Signature verified successfully");
+    
+//     const deposit = await Deposit.findOne({ mchOrderNo });
+    
+//     if (!deposit) {
+//       console.error(`❌ Deposit not found for order: ${mchOrderNo}`);
+//       return res.status(200).send("success");
+//     }
+    
+//     if (deposit.status === "completed") {
+//       console.log(`⚠️ Deposit ${mchOrderNo} already completed, skipping`);
+//       return res.status(200).send("success");
+//     }
+    
+//     if (status === 1) {
+//       deposit.status = "completed";
+//       deposit.realAmount =amount/100;
+//       deposit.income = income/100;
+//       deposit.utr = utr;
+//       deposit.payOrderId = payOrderId;
+//       deposit.paySuccessTime = paySuccessTime;
+//       deposit.completedAt = new Date();
+//       await deposit.save();
+      
+//       console.log(`✅ Deposit ${mchOrderNo} marked as completed`);
+      
+//       const userId = param1 || deposit.userId;
+//       const user = await User.findById(userId);
+//       if (user) {
+//         if (user.balance === undefined) user.balance = 0;
+//         const amountToAdd = (realAmount || amount/100);
+//         user.balance = (user.balance || 0) + amountToAdd;
+        
+//         if (!user.depositHistory) user.depositHistory = [];
+        
+//         user.depositHistory.push({
+//           amount: amountToAdd,
+//           orderId: payOrderId,
+//           utr: utr,
+//           date: new Date(),
+//           status: "completed"
+//         });
+        
+//         await user.save();
+//         console.log(`💰 Added ${amountToAdd} to user ${userId}'s balance. New balance: ${user.balance}`);
+//       } else {
+//         console.error(`❌ User not found: ${userId}`);
+//       }
+//     } else {
+//       deposit.status = status === 2 ? "failed" : "timeout";
+//       deposit.completedAt = new Date();
+//       await deposit.save();
+//       console.log(`⚠️ Deposit ${mchOrderNo} marked as ${deposit.status}`);
+//     }
+    
+//     res.status(200).send("success");
+    
+//   } catch (error) {
+//     console.error("❌ [callback] exception:", error.message);
+//     return res.status(200).send("success");
+//   }
+// });
+
+
+// ─── 3. Collection Result Notification / Callback ────────────────────────────
 router.post("/payment/callback", async (req, res) => {
   try {
     console.log("📥 Callback received:", req.body);
@@ -423,7 +524,6 @@ router.post("/payment/callback", async (req, res) => {
     return res.status(200).send("success");
   }
 });
-
 // ─── 4. Get Deposit Status ────────────────────────────────────────────────────
 router.get("/payment/deposit/status", verifyToken, async (req, res) => {
   try {
@@ -444,16 +544,7 @@ router.get("/payment/deposit/status", verifyToken, async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        mchOrderNo: deposit.mchOrderNo,
-        status: deposit.status,
-        amount: deposit.amount,
-        realAmount: deposit.realAmount,
-        income: deposit.income,
-        utr: deposit.utr,
-        paySuccessTime: deposit.paySuccessTime,
-        createdAt: deposit.createdAt,
-      },
+      data:deposit,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Error fetching deposit status", error: error.message });
