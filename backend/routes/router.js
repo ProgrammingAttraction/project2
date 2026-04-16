@@ -509,7 +509,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
     }
  console.log("ifscCode3",ifscCode)
 
-    const withdrawalAmount = Number(amount)*100; // Convert from paise/cents
+    const withdrawalAmount = Number(amount); // Convert from paise/cents
     if (user.balance < withdrawalAmount) {
       return res.status(400).json({
         success: false,
@@ -544,7 +544,7 @@ router.post("/payment/order/create-withdrawal", verifyToken, async (req, res) =>
       mchId: String(mchId).trim(),
       productId: String(productId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
-      amount:withdrawalAmount, // Keep original amount (paise/cents)
+      amount:withdrawalAmount*100, // Keep original amount (paise/cents)
       clientIp: String(clientIp).trim(),
       notifyUrl: String(notifyUrl).trim(),
       userName: String(userName).trim(),
