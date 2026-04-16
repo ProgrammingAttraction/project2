@@ -223,7 +223,7 @@ router.post("/payment/order/create", verifyToken, async (req, res) => {
       mchId: String(mchId).trim(),
       productId: String(productId).trim(),
       mchOrderNo: String(mchOrderNo).trim(),
-      amount: Number(amount),
+      amount: Number(amount)*100,
       clientIp: String(clientIp).trim(),
       notifyUrl: String(notifyUrl).trim(),
       param1: String(req.userId),
