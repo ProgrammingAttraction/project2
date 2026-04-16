@@ -385,7 +385,7 @@ router.post("/payment/callback", async (req, res) => {
       const user = await User.findById(userId);
       if (user) {
         if (user.balance === undefined) user.balance = 0;
-        const amountToAdd = (realAmount || amount) / 100;
+        const amountToAdd = (realAmount || amount);
         user.balance = (user.balance || 0) + amountToAdd;
         
         if (!user.depositHistory) user.depositHistory = [];
