@@ -167,7 +167,7 @@ export default function DepositResult() {
       if (localRes.data?.success) {
         const dep = localRes.data.data;
         setDeposit(dep);
-         console.log("Local DB status:", dep);
+
         if (dep.status === "completed") {
           setStatus("completed");
           clearInterval(pollRef.current);

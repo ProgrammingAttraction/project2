@@ -371,7 +371,7 @@ router.post("/payment/callback", async (req, res) => {
     
     if (status === 1) {
       deposit.status = "completed";
-      deposit.realAmount = realAmount || amount;
+      deposit.realAmount = realAmount || amount/100;
       deposit.income = income;
       deposit.utr = utr;
       deposit.payOrderId = payOrderId;
@@ -385,7 +385,7 @@ router.post("/payment/callback", async (req, res) => {
       const user = await User.findById(userId);
       if (user) {
         if (user.balance === undefined) user.balance = 0;
-        const amountToAdd = (realAmount || amount);
+        const amountToAdd = (realAmount || amount/100);
         user.balance = (user.balance || 0) + amountToAdd;
         
         if (!user.depositHistory) user.depositHistory = [];
