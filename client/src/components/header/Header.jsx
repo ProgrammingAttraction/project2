@@ -251,8 +251,8 @@ const WalletModal = ({ open, onClose, balance, setBalance, userId, onBalanceUpda
 
       const mchOrderNo = makeMchOrderNo(user._id);
       const amountNum = parseFloat(amount);
-      const amountInPaise = Math.round(amountNum * 100); // Convert to paise/cents
-      const amountInPaise2 = Math.round(amountNum * 100);
+      const amountInPaise = Math.round(amountNum); // Convert to paise/cents
+      const amountInPaise2 = Math.round(amountNum);
 
       if (tab === 'deposit') {
         // Use deposit product ID mapping
